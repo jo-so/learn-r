@@ -7,6 +7,7 @@ if (length(args) == 0)
     args <- c('04_*')
 
 library(stringr)
+library(zoo)
 
 loadData <- function(fileName) {
     inp <- readLines(fileName, encoding = 'latin1')
@@ -49,17 +50,26 @@ d <- ds[[1]]
 
 clock <- seq(max(sapply(ds, function (x) nrow(x$d)))) / as.double(d$`Sampling Rate`[1])
 
-colours <- rainbow(length(ds))
+colours <- rainbow(length(ds) * 3)
 
 fileName <- gsub('-Rep.*', '', names(ds)[1])
 
 # placement of diagrams per page (ROWS, COLS)
 ## par(mfrow = c(2, 1))
 for (chan in seq(ncol(d$d))) {
-    val = matrix(NA, length(clock), length(ds))
+    val = matrix(NA, length(clock), 3 * length(ds))
     for (i in seq(length(ds))) {
         dval <- ds[[i]]$d[,chan] * as.double(ds[[i]]$`Y Axis Multiplier`[chan])
-        val[1:length(dval), i] = dval
+        val[1:length(dval), 3 * i - 2] = dval
+        o <- dval
+
+        tmp <- rollapply(dval, 27, mean)
+        val[1:length(tmp), 3 * i - 1] = tmp
+
+        tmp <- sapply(diff(dval, lag = 3), function (x) ifelse(abs(x) < 5e-5, 0, x))
+## print(which(tmp != 0))
+## hist(dval[tmp > 0])
+        val[1:length(tmp), 3 * i] = tmp
     }
 
     matplot(clock * as.double(d$`X Axis Multiplier`[chan]), val,
@@ -67,8 +77,7 @@ for (chan in seq(ncol(d$d))) {
             main = paste('Channel', chan, 'of', fileName),
             xlab = d$`X Axis Title`[chan],
             ylab = d$`Y Axis Title`[chan])
-    legend('topright', gsub('.*-Rep(\\d+).*', 'Repetition \\1', names(ds[seq(ncol(val))])),
-           fill = colours)
+    legend('topright', c('raw Rep4', 'moving avg 27', 'diff(lag = 3)'), fill = colours)
 }
 
 print(warnings())
